@@ -1,0 +1,1426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Cooperative Object Transport</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #07111f;
+    --plot: #0a1627;
+    --panel: #111f32;
+    --panel-2: #17283e;
+    --border: #29405e;
+    --text: #edf5ff;
+    --muted: #8ea3bd;
+    --cyan: #39c6f4;
+    --violet: #a78bfa;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --danger: #fb7185;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  button,
+  input {
+    font: inherit;
+  }
+
+  button {
+    color: inherit;
+  }
+
+  .app {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .simulation-panel {
+    position: relative;
+    flex: 0 0 66.666%;
+    min-height: 0;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 50% 42%, rgba(57, 198, 244, 0.06), transparent 42%),
+      var(--plot);
+    border-bottom: 1px solid var(--border);
+  }
+
+  #simCanvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+  }
+
+  .hud {
+    position: absolute;
+    z-index: 2;
+    top: max(8px, env(safe-area-inset-top));
+    left: 10px;
+    right: 10px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    pointer-events: none;
+  }
+
+  .hud-card {
+    min-height: 34px;
+    padding: 7px 10px;
+    border: 1px solid rgba(41, 64, 94, 0.86);
+    border-radius: 10px;
+    background: rgba(7, 17, 31, 0.78);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  }
+
+  .mode-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    box-shadow: 0 0 0 3px rgba(142, 163, 189, 0.12);
+  }
+
+  .status-dot.running {
+    background: var(--green);
+    box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.14), 0 0 12px rgba(74, 222, 128, 0.55);
+  }
+
+  .readout {
+    text-align: right;
+    font-size: 0.66rem;
+    line-height: 1.45;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .readout b {
+    color: var(--cyan);
+    font-weight: 700;
+  }
+
+  .canvas-hint {
+    position: absolute;
+    z-index: 2;
+    left: 50%;
+    bottom: 52px;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: calc(100% - 26px);
+    padding: 6px 10px;
+    border: 1px solid rgba(41, 64, 94, 0.78);
+    border-radius: 999px;
+    background: rgba(7, 17, 31, 0.76);
+    color: var(--muted);
+    font-size: 0.64rem;
+    text-align: center;
+    white-space: normal;
+    pointer-events: none;
+    transition: opacity 0.25s;
+  }
+
+  .canvas-hint.hidden {
+    opacity: 0;
+  }
+
+  .control-panel {
+    flex: 1 1 33.334%;
+    min-height: 0;
+    overflow: hidden;
+    background: linear-gradient(180deg, #13243a, #0d1929);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .control-scroll {
+    width: 100%;
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 8px 10px 10px;
+  }
+
+  .control-inner {
+    width: min(100%, 720px);
+    min-width: 0;
+    max-width: 100%;
+    margin: 0 auto;
+  }
+
+  .toolbar {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+    align-items: center;
+  }
+
+  .mode-switch {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: rgba(7, 17, 31, 0.66);
+  }
+
+  .mode-button {
+    min-width: 0;
+    min-height: 38px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mode-button.active {
+    background: linear-gradient(135deg, rgba(57, 198, 244, 0.96), rgba(92, 143, 246, 0.96));
+    color: #03111c;
+    box-shadow: 0 5px 18px rgba(57, 198, 244, 0.18);
+  }
+
+  .action-row {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    gap: 5px;
+  }
+
+  .action-button {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 35px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    background: var(--panel-2);
+    color: var(--text);
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .action-button:active,
+  .mode-button:active,
+  .preset-button:active {
+    transform: scale(0.97);
+  }
+
+  .action-button.primary {
+    border-color: rgba(74, 222, 128, 0.5);
+    background: rgba(74, 222, 128, 0.14);
+    color: #a7f3d0;
+  }
+
+  .action-button.stop-command {
+    border-color: rgba(251, 113, 133, 0.45);
+    color: #fecdd3;
+  }
+
+  .parameter-area {
+    margin-top: 7px;
+  }
+
+  .parameter-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px 7px;
+  }
+
+  .parameter {
+    min-width: 0;
+    padding: 5px 8px 3px;
+    border: 1px solid rgba(41, 64, 94, 0.72);
+    border-radius: 10px;
+    background: rgba(7, 17, 31, 0.45);
+  }
+
+  .parameter.wide {
+    grid-column: 1 / -1;
+  }
+
+  .parameter-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 0.64rem;
+    line-height: 1;
+  }
+
+  .parameter-label strong {
+    color: var(--text);
+    font-weight: 650;
+  }
+
+  .parameter-value {
+    color: var(--cyan);
+    font-weight: 750;
+    font-variant-numeric: tabular-nums;
+  }
+
+  input[type="range"] {
+    width: 100%;
+    height: 23px;
+    margin-top: 1px;
+    background: transparent;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, rgba(57, 198, 244, 0.82), rgba(167, 139, 250, 0.7));
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    width: 19px;
+    height: 19px;
+    margin-top: -7.5px;
+    border: 2px solid #07111f;
+    border-radius: 50%;
+    background: #dff7ff;
+    box-shadow: 0 0 0 2px rgba(57, 198, 244, 0.24);
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  input[type="range"]::-moz-range-track {
+    height: 4px;
+    border: 0;
+    border-radius: 2px;
+    background: rgba(57, 198, 244, 0.72);
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #07111f;
+    border-radius: 50%;
+    background: #dff7ff;
+  }
+
+  .preset-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 6px;
+  }
+
+  .preset-label {
+    color: var(--muted);
+    font-size: 0.62rem;
+    white-space: nowrap;
+  }
+
+  .preset-button {
+    min-height: 29px;
+    padding: 0 9px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: rgba(23, 40, 62, 0.9);
+    color: var(--muted);
+    font-size: 0.63rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .preset-button.active {
+    border-color: rgba(167, 139, 250, 0.74);
+    color: #ddd6fe;
+    background: rgba(167, 139, 250, 0.14);
+  }
+
+  .manual-only[hidden],
+  .paper-only[hidden] {
+    display: none;
+  }
+
+  @media (max-width: 360px) {
+    .control-scroll {
+      padding-left: 7px;
+      padding-right: 7px;
+    }
+
+    .mode-button {
+      padding: 0 4px;
+      font-size: 0.66rem;
+    }
+
+    .action-button {
+      min-width: 39px;
+      padding: 0 7px;
+    }
+  }
+
+  @media (orientation: landscape) and (max-height: 520px) {
+    .parameter-grid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .parameter.wide {
+      grid-column: auto;
+    }
+  }
+</style>
+</head>
+<body>
+<main class="app">
+  <section class="simulation-panel" id="simulationPanel" aria-label="Simulation animation">
+    <canvas id="simCanvas"></canvas>
+
+    <div class="hud">
+      <div class="hud-card mode-status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="modeStatus">Manual velocity command</span>
+      </div>
+      <div class="hud-card readout">
+        <div id="simTime">t = 0.0 s</div>
+        <div><b id="vcReadout">vᶜ = (0.00, 0.00)</b></div>
+      </div>
+    </div>
+
+    <div class="canvas-hint" id="canvasHint">Tap or drag: direction sets vᶜ, distance sets speed</div>
+  </section>
+
+  <section class="control-panel" aria-label="Simulation controls">
+    <div class="control-scroll">
+      <div class="control-inner">
+        <div class="toolbar">
+          <div class="mode-switch" role="group" aria-label="Mode selector">
+            <button class="mode-button active" type="button" data-mode="manual">Mode 1 · Touch vᶜ</button>
+            <button class="mode-button" type="button" data-mode="paper">Mode 2 · Paper</button>
+          </div>
+
+          <div class="action-row">
+            <button class="action-button primary" type="button" id="runButton">▶ Start</button>
+            <button class="action-button" type="button" id="resetButton" aria-label="Reset">↺</button>
+            <button class="action-button stop-command manual-only" type="button" id="zeroButton" aria-label="Set velocity command to zero">vᶜ=0</button>
+          </div>
+        </div>
+
+        <div class="parameter-area">
+          <div class="parameter-grid">
+            <label class="parameter">
+              <span class="parameter-label"><strong>k<sub>v</sub></strong><span class="parameter-value" id="kvValue">0.5</span></span>
+              <input id="kvSlider" type="range" min="0.1" max="2.0" step="0.1" value="0.5">
+            </label>
+
+            <label class="parameter">
+              <span class="parameter-label"><strong>k<sub>p</sub></strong><span class="parameter-value" id="kpValue">1.0</span></span>
+              <input id="kpSlider" type="range" min="0.1" max="2.0" step="0.1" value="1.0">
+            </label>
+
+            <label class="parameter">
+              <span class="parameter-label"><strong>k<sub>f</sub></strong><span class="parameter-value" id="kfValue">30</span></span>
+              <input id="kfSlider" type="range" min="5" max="60" step="1" value="30">
+            </label>
+
+            <label class="parameter">
+              <span class="parameter-label"><strong>ε</strong><span class="parameter-value" id="epsValue">0.010</span></span>
+              <input id="epsSlider" type="range" min="0.001" max="0.050" step="0.001" value="0.010">
+            </label>
+
+            <label class="parameter wide manual-only" id="manualSpeedParameter">
+              <span class="parameter-label"><strong>Manual max speed</strong><span class="parameter-value" id="manualSpeedValue">1.0</span></span>
+              <input id="manualSpeedSlider" type="range" min="0.2" max="2.0" step="0.1" value="1.0">
+            </label>
+          </div>
+
+          <div class="preset-row paper-only" id="paperPresets" hidden>
+            <span class="preset-label">Presets:</span>
+            <button class="preset-button active" type="button" data-preset="set1">Set 1 · k<sub>p</sub>=1.0</button>
+            <button class="preset-button" type="button" data-preset="set2">Set 2 · k<sub>p</sub>=0.1</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  // ─────────────────────────────────────────────────────────
+  // Model parameters (matching the paper)
+  // ─────────────────────────────────────────────────────────
+  const PI = Math.PI;
+  const N = 3;
+  const D = 0.2;
+  const DO = 0.6;
+  const CONTACT_DISTANCE = D + DO;
+  const DT = 0.05;
+  const SIMULATION_RATE = 4;
+  const COMMAND_TAU = 0.25;
+  const MAX_TRAIL = 1800;
+
+  const directions = Array.from({ length: N }, (_, index) => {
+    const angle = 2 * PI * index / N;
+    return [Math.cos(angle), Math.sin(angle)];
+  });
+
+  let epsilon = 0.01;
+  let kv = 0.5;
+  let kp = 1.0;
+  let kf = 30;
+  let manualMaxSpeed = 1.0;
+
+  let mode = "manual";
+  let paused = true;
+  let time = 0;
+  let objectPosition = [0, 0];
+  let objectVelocity = [0, 0];
+  let robotPositions = [];
+  let robotReferences = [];
+  let qpSolution = new Array(N).fill(0);
+  let commandVelocity = [0, 0];
+  let manualTarget = [0, 0];
+  let manualVelocity = [0, 0];
+  let activePointer = null;
+  let hintTimer = null;
+
+  const objectTrail = [];
+  const robotTrails = Array.from({ length: N }, () => []);
+  const robotColors = ["#38bdf8", "#818cf8", "#c084fc"];
+
+  // ─────────────────────────────────────────────────────────
+  // DOM and canvas
+  // ─────────────────────────────────────────────────────────
+  const simulationPanel = document.getElementById("simulationPanel");
+  const canvas = document.getElementById("simCanvas");
+  const ctx = canvas.getContext("2d");
+  const runButton = document.getElementById("runButton");
+  const resetButton = document.getElementById("resetButton");
+  const zeroButton = document.getElementById("zeroButton");
+  const statusDot = document.getElementById("statusDot");
+  const modeStatus = document.getElementById("modeStatus");
+  const simTime = document.getElementById("simTime");
+  const vcReadout = document.getElementById("vcReadout");
+  const canvasHint = document.getElementById("canvasHint");
+  const paperPresets = document.getElementById("paperPresets");
+  const manualSpeedParameter = document.getElementById("manualSpeedParameter");
+
+  let dpr = 1;
+  let viewX = 0;
+  let viewY = 0;
+  let viewScale = 80;
+
+  function plotRect() {
+    const left = 43 * dpr;
+    const right = 13 * dpr;
+    const top = 13 * dpr;
+    const bottom = 31 * dpr;
+    return {
+      left,
+      top,
+      right: canvas.width - right,
+      bottom: canvas.height - bottom,
+      width: Math.max(1, canvas.width - left - right),
+      height: Math.max(1, canvas.height - top - bottom)
+    };
+  }
+
+  function worldToScreen(x, y) {
+    const plot = plotRect();
+    return [
+      plot.left + plot.width / 2 + (x - viewX) * viewScale,
+      plot.top + plot.height / 2 - (y - viewY) * viewScale
+    ];
+  }
+
+  function screenToWorld(x, y) {
+    const plot = plotRect();
+    return [
+      viewX + (x - plot.left - plot.width / 2) / viewScale,
+      viewY - (y - plot.top - plot.height / 2) / viewScale
+    ];
+  }
+
+  function isInsidePlot(x, y) {
+    const plot = plotRect();
+    return x >= plot.left && x <= plot.right && y >= plot.top && y <= plot.bottom;
+  }
+
+  function fitView(immediate = true) {
+    const plot = plotRect();
+    const positions = [objectPosition, ...robotPositions];
+    let minX = objectPosition[0] - DO;
+    let maxX = objectPosition[0] + DO;
+    let minY = objectPosition[1] - DO;
+    let maxY = objectPosition[1] + DO;
+
+    for (let index = 1; index < positions.length; index += 1) {
+      minX = Math.min(minX, positions[index][0] - D);
+      maxX = Math.max(maxX, positions[index][0] + D);
+      minY = Math.min(minY, positions[index][1] - D);
+      maxY = Math.max(maxY, positions[index][1] + D);
+    }
+
+    const padding = 1.0;
+    const spanX = Math.max(8.0, maxX - minX + 2 * padding);
+    const spanY = Math.max(8.0, maxY - minY + 2 * padding);
+    const targetX = (minX + maxX) / 2;
+    const targetY = (minY + maxY) / 2;
+    const targetScale = Math.max(
+      26 * dpr,
+      Math.min(125 * dpr, plot.width / spanX, plot.height / spanY)
+    );
+    const blend = immediate ? 1 : 0.09;
+
+    viewX += (targetX - viewX) * blend;
+    viewY += (targetY - viewY) * blend;
+    viewScale += (targetScale - viewScale) * blend;
+  }
+
+  function resizeCanvas() {
+    const bounds = simulationPanel.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.max(1, Math.round(bounds.width * dpr));
+    canvas.height = Math.max(1, Math.round(bounds.height * dpr));
+    canvas.style.width = bounds.width + "px";
+    canvas.style.height = bounds.height + "px";
+    fitView();
+  }
+
+  window.addEventListener("resize", resizeCanvas);
+  window.addEventListener("orientationchange", () => setTimeout(resizeCanvas, 120));
+  if ("ResizeObserver" in window) {
+    new ResizeObserver(resizeCanvas).observe(simulationPanel);
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // Simulation
+  // ─────────────────────────────────────────────────────────
+  function paperCommand(t) {
+    return [-Math.cos(PI * t / 10), -Math.sin(PI * t / 10)];
+  }
+
+  function paperCommandDerivative(t) {
+    return [
+      (PI / 10) * Math.sin(PI * t / 10),
+      -(PI / 10) * Math.cos(PI * t / 10)
+    ];
+  }
+
+  function commandForStep() {
+    if (mode === "paper") {
+      commandVelocity = paperCommand(time);
+      return [commandVelocity, paperCommandDerivative(time)];
+    }
+
+    const previous = [manualVelocity[0], manualVelocity[1]];
+    const alpha = 1 - Math.exp(-DT / COMMAND_TAU);
+    manualVelocity[0] += alpha * (manualTarget[0] - manualVelocity[0]);
+    manualVelocity[1] += alpha * (manualTarget[1] - manualVelocity[1]);
+    commandVelocity = [manualVelocity[0], manualVelocity[1]];
+    return [
+      commandVelocity,
+      [
+        (manualVelocity[0] - previous[0]) / DT,
+        (manualVelocity[1] - previous[1]) / DT
+      ]
+    ];
+  }
+
+  function computeContactForce() {
+    let fx = 0;
+    let fy = 0;
+
+    for (let index = 0; index < N; index += 1) {
+      const dx = robotPositions[index][0] - objectPosition[0];
+      const dy = robotPositions[index][1] - objectPosition[1];
+      const distance = Math.hypot(dx, dy);
+      if (distance < 1e-9) continue;
+
+      const penetration = CONTACT_DISTANCE - distance;
+      if (penetration > 0) {
+        const magnitude = kf * penetration;
+        fx -= magnitude * dx / distance;
+        fy -= magnitude * dy / distance;
+      }
+    }
+    return [fx, fy];
+  }
+
+  function solveSmall(matrix, vector, size) {
+    const augmented = Array.from({ length: size }, (_, row) => (
+      Array.from({ length: size + 1 }, (_, column) => (
+        column < size ? matrix[row][column] : -vector[row]
+      ))
+    ));
+
+    for (let column = 0; column < size; column += 1) {
+      let pivot = column;
+      for (let row = column + 1; row < size; row += 1) {
+        if (Math.abs(augmented[row][column]) > Math.abs(augmented[pivot][column])) {
+          pivot = row;
+        }
+      }
+      if (Math.abs(augmented[pivot][column]) < 1e-14) return null;
+
+      if (pivot !== column) {
+        [augmented[pivot], augmented[column]] = [augmented[column], augmented[pivot]];
+      }
+
+      const divisor = augmented[column][column];
+      for (let entry = column; entry <= size; entry += 1) {
+        augmented[column][entry] /= divisor;
+      }
+
+      for (let row = 0; row < size; row += 1) {
+        if (row === column) continue;
+        const factor = augmented[row][column];
+        for (let entry = column; entry <= size; entry += 1) {
+          augmented[row][entry] -= factor * augmented[column][entry];
+        }
+      }
+    }
+    return augmented.map((row) => row[size]);
+  }
+
+  function solveQP(velocityError, commandDerivative) {
+    const target = [
+      kv * velocityError[0] - commandDerivative[0],
+      kv * velocityError[1] - commandDerivative[1]
+    ];
+    const hessian = Array.from({ length: N }, () => new Array(N).fill(0));
+    const linear = new Array(N).fill(0);
+
+    for (let row = 0; row < N; row += 1) {
+      for (let column = 0; column < N; column += 1) {
+        hessian[row][column] = 2 * kf * kf * (
+          directions[row][0] * directions[column][0] +
+          directions[row][1] * directions[column][1]
+        );
+      }
+      hessian[row][row] += 2 * epsilon;
+      linear[row] = -2 * kf * (
+        directions[row][0] * target[0] +
+        directions[row][1] * target[1]
+      );
+    }
+
+    let best = new Array(N).fill(0);
+    let bestValue = Infinity;
+
+    for (let mask = 0; mask < (1 << N); mask += 1) {
+      const free = [];
+      for (let index = 0; index < N; index += 1) {
+        if (!(mask & (1 << index))) free.push(index);
+      }
+
+      const candidate = new Array(N).fill(0);
+      let feasible = true;
+      if (free.length > 0) {
+        const reducedHessian = free.map((row) => free.map((column) => hessian[row][column]));
+        const reducedLinear = free.map((index) => linear[index]);
+        const solution = solveSmall(reducedHessian, reducedLinear, free.length);
+
+        if (!solution) {
+          feasible = false;
+        } else {
+          for (let index = 0; index < free.length; index += 1) {
+            if (solution[index] < -1e-12) {
+              feasible = false;
+              break;
+            }
+            candidate[free[index]] = Math.max(0, solution[index]);
+          }
+        }
+      }
+      if (!feasible) continue;
+
+      let kktSatisfied = true;
+      for (let row = 0; row < N; row += 1) {
+        if (candidate[row] > 1e-12) continue;
+        let gradient = linear[row];
+        for (let column = 0; column < N; column += 1) {
+          gradient += hessian[row][column] * candidate[column];
+        }
+        if (gradient < -1e-10) {
+          kktSatisfied = false;
+          break;
+        }
+      }
+      if (!kktSatisfied) continue;
+
+      let value = 0;
+      for (let row = 0; row < N; row += 1) {
+        value += linear[row] * candidate[row];
+        for (let column = 0; column < N; column += 1) {
+          value += 0.5 * candidate[row] * hessian[row][column] * candidate[column];
+        }
+      }
+      if (value < bestValue) {
+        bestValue = value;
+        best = candidate;
+      }
+    }
+    return best;
+  }
+
+  function computeRobotReferences(solution) {
+    return directions.map((direction, index) => ([
+      objectPosition[0] + direction[0] * (CONTACT_DISTANCE - solution[index]),
+      objectPosition[1] + direction[1] * (CONTACT_DISTANCE - solution[index])
+    ]));
+  }
+
+  function simulationStep() {
+    const [vc, dvc] = commandForStep();
+    const velocityError = [
+      objectVelocity[0] - vc[0],
+      objectVelocity[1] - vc[1]
+    ];
+
+    qpSolution = solveQP(velocityError, dvc);
+    robotReferences = computeRobotReferences(qpSolution);
+
+    const force = computeContactForce();
+    const previousObjectVelocity = [objectVelocity[0], objectVelocity[1]];
+    const robotVelocities = robotPositions.map((position, index) => ([
+      -kp * (position[0] - robotReferences[index][0]) + previousObjectVelocity[0],
+      -kp * (position[1] - robotReferences[index][1]) + previousObjectVelocity[1]
+    ]));
+
+    // Explicit Euler, matching x <- x + dx*dT in main.m.  Every derivative
+    // below is evaluated from the same pre-update state.
+    objectPosition[0] += previousObjectVelocity[0] * DT;
+    objectPosition[1] += previousObjectVelocity[1] * DT;
+    objectVelocity[0] += force[0] * DT;
+    objectVelocity[1] += force[1] * DT;
+    for (let index = 0; index < N; index += 1) {
+      robotPositions[index][0] += robotVelocities[index][0] * DT;
+      robotPositions[index][1] += robotVelocities[index][1] * DT;
+    }
+    time += DT;
+
+    objectTrail.push([objectPosition[0], objectPosition[1]]);
+    for (let index = 0; index < N; index += 1) {
+      robotTrails[index].push([robotPositions[index][0], robotPositions[index][1]]);
+    }
+    if (objectTrail.length > MAX_TRAIL) objectTrail.shift();
+    for (const trail of robotTrails) {
+      if (trail.length > MAX_TRAIL) trail.shift();
+    }
+  }
+
+  function resetSimulation() {
+    time = 0;
+    activePointer = null;
+    manualTarget = [0, 0];
+    manualVelocity = [0, 0];
+    commandVelocity = mode === "paper" ? paperCommand(0) : [0, 0];
+
+    if (mode === "paper") {
+      objectPosition = [-8, 0];
+      objectVelocity = [0, 0];
+      robotPositions = [[-7, 1], [-9, 1], [-9, -1]];
+    } else {
+      objectPosition = [0, 0];
+      objectVelocity = [0, 0];
+      robotPositions = [[1, 1], [-1, 1], [-1, -1]];
+    }
+
+    qpSolution = new Array(N).fill(0);
+    robotReferences = computeRobotReferences(qpSolution);
+    objectTrail.length = 0;
+    for (const trail of robotTrails) trail.length = 0;
+    fitView();
+    updateInterface();
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // Manual command input
+  // ─────────────────────────────────────────────────────────
+  function pointerPosition(event) {
+    const bounds = canvas.getBoundingClientRect();
+    return [
+      (event.clientX - bounds.left) * dpr,
+      (event.clientY - bounds.top) * dpr
+    ];
+  }
+
+  function manualCommandRadius() {
+    const plot = plotRect();
+    return Math.min(plot.width, plot.height) * 0.28;
+  }
+
+  function setManualCommand(screenX, screenY) {
+    const objectScreen = worldToScreen(objectPosition[0], objectPosition[1]);
+    const dx = screenX - objectScreen[0];
+    const dy = screenY - objectScreen[1];
+    const distance = Math.hypot(dx, dy);
+    const deadZone = 18 * dpr;
+    const fullSpeedDistance = manualCommandRadius();
+
+    if (distance <= deadZone) {
+      manualTarget = [0, 0];
+    } else {
+      const normalizedDistance = Math.min(
+        1,
+        (distance - deadZone) / Math.max(1, fullSpeedDistance - deadZone)
+      );
+      const speed = manualMaxSpeed * normalizedDistance;
+      manualTarget = [
+        speed * dx / distance,
+        -speed * dy / distance
+      ];
+    }
+    updateReadout();
+  }
+
+  canvas.addEventListener("pointerdown", (event) => {
+    if (mode !== "manual") return;
+    const [x, y] = pointerPosition(event);
+    if (!isInsidePlot(x, y)) return;
+
+    event.preventDefault();
+    activePointer = event.pointerId;
+    canvas.setPointerCapture(event.pointerId);
+    setManualCommand(x, y);
+    canvasHint.classList.add("hidden");
+    if (hintTimer) clearTimeout(hintTimer);
+  });
+
+  canvas.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== activePointer || mode !== "manual") return;
+    const [x, y] = pointerPosition(event);
+    setManualCommand(x, y);
+  });
+
+  function releasePointer(event) {
+    if (event.pointerId !== activePointer) return;
+    activePointer = null;
+    hintTimer = setTimeout(() => canvasHint.classList.remove("hidden"), 900);
+  }
+
+  canvas.addEventListener("pointerup", releasePointer);
+  canvas.addEventListener("pointercancel", releasePointer);
+
+  // ─────────────────────────────────────────────────────────
+  // Drawing
+  // ─────────────────────────────────────────────────────────
+  function niceTickStep() {
+    const targetWorldSpacing = 64 * dpr / viewScale;
+    const power = Math.pow(10, Math.floor(Math.log10(targetWorldSpacing)));
+    const scaled = targetWorldSpacing / power;
+    const factor = scaled < 1.5 ? 1 : scaled < 3.5 ? 2 : scaled < 7.5 ? 5 : 10;
+    return factor * power;
+  }
+
+  function tickText(value, step) {
+    const decimals = Math.max(0, -Math.floor(Math.log10(step)));
+    const cleaned = Math.abs(value) < step * 1e-6 ? 0 : value;
+    return cleaned.toFixed(Math.min(2, decimals));
+  }
+
+  function drawAxes() {
+    const plot = plotRect();
+    const step = niceTickStep();
+    const lowerLeft = screenToWorld(plot.left, plot.bottom);
+    const upperRight = screenToWorld(plot.right, plot.top);
+
+    ctx.fillStyle = "#091728";
+    ctx.fillRect(plot.left, plot.top, plot.width, plot.height);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(plot.left, plot.top, plot.width, plot.height);
+    ctx.clip();
+    ctx.strokeStyle = "rgba(101, 129, 162, 0.18)";
+    ctx.lineWidth = dpr;
+
+    const firstX = Math.ceil(lowerLeft[0] / step) * step;
+    const firstY = Math.ceil(lowerLeft[1] / step) * step;
+    for (let x = firstX; x <= upperRight[0] + step * 0.5; x += step) {
+      const [screenX] = worldToScreen(x, 0);
+      ctx.beginPath();
+      ctx.moveTo(screenX, plot.top);
+      ctx.lineTo(screenX, plot.bottom);
+      ctx.stroke();
+    }
+    for (let y = firstY; y <= upperRight[1] + step * 0.5; y += step) {
+      const [, screenY] = worldToScreen(0, y);
+      ctx.beginPath();
+      ctx.moveTo(plot.left, screenY);
+      ctx.lineTo(plot.right, screenY);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.strokeStyle = "rgba(205, 224, 244, 0.72)";
+    ctx.lineWidth = 1.2 * dpr;
+    ctx.strokeRect(plot.left, plot.top, plot.width, plot.height);
+
+    ctx.fillStyle = "rgba(190, 210, 232, 0.76)";
+    ctx.font = `${9 * dpr}px -apple-system, BlinkMacSystemFont, sans-serif`;
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    for (let x = firstX; x <= upperRight[0] + step * 0.5; x += step) {
+      const [screenX] = worldToScreen(x, 0);
+      if (screenX < plot.left - 1 || screenX > plot.right + 1) continue;
+      ctx.beginPath();
+      ctx.moveTo(screenX, plot.bottom);
+      ctx.lineTo(screenX, plot.bottom + 4 * dpr);
+      ctx.stroke();
+      ctx.fillText(tickText(x, step), screenX, plot.bottom + 5 * dpr);
+    }
+
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (let y = firstY; y <= upperRight[1] + step * 0.5; y += step) {
+      const [, screenY] = worldToScreen(0, y);
+      if (screenY < plot.top - 1 || screenY > plot.bottom + 1) continue;
+      ctx.beginPath();
+      ctx.moveTo(plot.left - 4 * dpr, screenY);
+      ctx.lineTo(plot.left, screenY);
+      ctx.stroke();
+      ctx.fillText(tickText(y, step), plot.left - 6 * dpr, screenY);
+    }
+
+    ctx.fillStyle = "rgba(226, 238, 250, 0.88)";
+    ctx.font = `600 ${10 * dpr}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "bottom";
+    ctx.fillText("p₁", plot.right, plot.bottom - 5 * dpr);
+    ctx.save();
+    ctx.translate(plot.left + 12 * dpr, plot.top + 7 * dpr);
+    ctx.rotate(-PI / 2);
+    ctx.textAlign = "right";
+    ctx.fillText("p₂", 0, 0);
+    ctx.restore();
+  }
+
+  function drawTrail(points, color, width) {
+    if (points.length < 2) return;
+    ctx.beginPath();
+    const start = worldToScreen(points[0][0], points[0][1]);
+    ctx.moveTo(start[0], start[1]);
+    const stride = points.length > 900 ? 3 : 2;
+    for (let index = stride; index < points.length; index += stride) {
+      const point = worldToScreen(points[index][0], points[index][1]);
+      ctx.lineTo(point[0], point[1]);
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width * dpr;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+  }
+
+  function drawArrow(fromX, fromY, toX, toY, color, width, dashed = false) {
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const length = Math.hypot(dx, dy);
+    if (length < 3 * dpr) return;
+
+    const ux = dx / length;
+    const uy = dy / length;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = width * dpr;
+    ctx.lineCap = "round";
+    ctx.setLineDash(dashed ? [5 * dpr, 4 * dpr] : []);
+    ctx.beginPath();
+    ctx.moveTo(fromX, fromY);
+    ctx.lineTo(toX, toY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const head = Math.min(9 * dpr, length * 0.32);
+    ctx.beginPath();
+    ctx.moveTo(toX, toY);
+    ctx.lineTo(toX - ux * head - uy * head * 0.52, toY - uy * head + ux * head * 0.52);
+    ctx.lineTo(toX - ux * head + uy * head * 0.52, toY - uy * head - ux * head * 0.52);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawManualCommandGuide(objectScreen) {
+    if (mode !== "manual") return;
+    const radius = manualCommandRadius();
+    const deadZone = 18 * dpr;
+
+    ctx.setLineDash([5 * dpr, 5 * dpr]);
+    ctx.strokeStyle = "rgba(57, 198, 244, 0.19)";
+    ctx.lineWidth = dpr;
+    ctx.beginPath();
+    ctx.arc(objectScreen[0], objectScreen[1], radius, 0, 2 * PI);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = "rgba(251, 113, 133, 0.34)";
+    ctx.beginPath();
+    ctx.arc(objectScreen[0], objectScreen[1], deadZone, 0, 2 * PI);
+    ctx.stroke();
+
+    const speed = Math.hypot(manualTarget[0], manualTarget[1]);
+    if (speed < 1e-4) return;
+    const normalized = Math.min(1, speed / manualMaxSpeed);
+    const targetX = objectScreen[0] + manualTarget[0] / speed * radius * normalized;
+    const targetY = objectScreen[1] - manualTarget[1] / speed * radius * normalized;
+    drawArrow(objectScreen[0], objectScreen[1], targetX, targetY, "#39c6f4", 2.2);
+    ctx.beginPath();
+    ctx.arc(targetX, targetY, 5 * dpr, 0, 2 * PI);
+    ctx.fillStyle = "#dff7ff";
+    ctx.fill();
+  }
+
+  function drawScene() {
+    const plot = plotRect();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(plot.left, plot.top, plot.width, plot.height);
+    ctx.clip();
+
+    drawTrail(objectTrail, "rgba(57, 198, 244, 0.7)", 2.2);
+    for (let index = 0; index < N; index += 1) {
+      drawTrail(robotTrails[index], robotColors[index] + "45", 1.1);
+    }
+
+    for (let index = 0; index < N; index += 1) {
+      const reference = worldToScreen(robotReferences[index][0], robotReferences[index][1]);
+      const radius = Math.max(4 * dpr, D * viewScale);
+      ctx.setLineDash([3 * dpr, 3 * dpr]);
+      ctx.strokeStyle = "rgba(251, 191, 36, 0.36)";
+      ctx.lineWidth = dpr;
+      ctx.beginPath();
+      ctx.arc(reference[0], reference[1], radius, 0, 2 * PI);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    for (let index = 0; index < N; index += 1) {
+      const screen = worldToScreen(robotPositions[index][0], robotPositions[index][1]);
+      const radius = Math.max(7 * dpr, D * viewScale);
+      const gradient = ctx.createRadialGradient(
+        screen[0] - radius * 0.28,
+        screen[1] - radius * 0.3,
+        radius * 0.08,
+        screen[0],
+        screen[1],
+        radius
+      );
+      gradient.addColorStop(0, "#eefaff");
+      gradient.addColorStop(0.36, robotColors[index]);
+      gradient.addColorStop(1, "#233876");
+      ctx.fillStyle = gradient;
+      ctx.strokeStyle = "rgba(4, 12, 26, 0.86)";
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.beginPath();
+      ctx.arc(screen[0], screen[1], radius, 0, 2 * PI);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `700 ${Math.max(8 * dpr, radius * 0.7)}px -apple-system, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(index + 1), screen[0], screen[1]);
+    }
+
+    const objectScreen = worldToScreen(objectPosition[0], objectPosition[1]);
+    const objectRadius = Math.max(15 * dpr, DO * viewScale);
+    const objectGradient = ctx.createRadialGradient(
+      objectScreen[0] - objectRadius * 0.26,
+      objectScreen[1] - objectRadius * 0.28,
+      objectRadius * 0.06,
+      objectScreen[0],
+      objectScreen[1],
+      objectRadius
+    );
+    objectGradient.addColorStop(0, "#f5efff");
+    objectGradient.addColorStop(0.3, "#c4b5fd");
+    objectGradient.addColorStop(0.72, "#7c3aed");
+    objectGradient.addColorStop(1, "#4c1d95");
+    ctx.fillStyle = objectGradient;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+    ctx.lineWidth = 1.8 * dpr;
+    ctx.beginPath();
+    ctx.arc(objectScreen[0], objectScreen[1], objectRadius, 0, 2 * PI);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.font = `700 ${Math.max(9 * dpr, objectRadius * 0.34)}px -apple-system, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("obj", objectScreen[0], objectScreen[1]);
+
+    for (let index = 0; index < N; index += 1) {
+      const dx = robotPositions[index][0] - objectPosition[0];
+      const dy = robotPositions[index][1] - objectPosition[1];
+      const distance = Math.hypot(dx, dy);
+      if (distance < 1e-9) continue;
+      const penetration = CONTACT_DISTANCE - distance;
+      if (penetration <= 0.001) continue;
+
+      const ux = dx / distance;
+      const uy = dy / distance;
+      const contactPoint = worldToScreen(
+        objectPosition[0] + ux * DO,
+        objectPosition[1] + uy * DO
+      );
+      const forceLength = Math.min(70 * dpr, Math.max(10 * dpr, kf * penetration * 9 * dpr));
+      drawArrow(
+        contactPoint[0],
+        contactPoint[1],
+        contactPoint[0] - ux * forceLength,
+        contactPoint[1] + uy * forceLength,
+        "rgba(74, 222, 128, 0.86)",
+        1.7
+      );
+    }
+
+    const vcMagnitude = Math.hypot(commandVelocity[0], commandVelocity[1]);
+    if (vcMagnitude > 1e-4) {
+      const commandEnd = worldToScreen(
+        objectPosition[0] + 0.72 * commandVelocity[0],
+        objectPosition[1] + 0.72 * commandVelocity[1]
+      );
+      drawArrow(
+        objectScreen[0],
+        objectScreen[1],
+        commandEnd[0],
+        commandEnd[1],
+        "rgba(57, 198, 244, 0.92)",
+        2.2,
+        true
+      );
+    }
+
+    const velocityMagnitude = Math.hypot(objectVelocity[0], objectVelocity[1]);
+    if (velocityMagnitude > 1e-4) {
+      const velocityEnd = worldToScreen(
+        objectPosition[0] + 0.62 * objectVelocity[0],
+        objectPosition[1] + 0.62 * objectVelocity[1]
+      );
+      drawArrow(
+        objectScreen[0],
+        objectScreen[1],
+        velocityEnd[0],
+        velocityEnd[1],
+        "#fbbf24",
+        2.1
+      );
+    }
+
+    drawManualCommandGuide(objectScreen);
+    ctx.restore();
+  }
+
+  function render() {
+    fitView(false);
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#07111f";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawAxes();
+    drawScene();
+    updateReadout();
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // Controls
+  // ─────────────────────────────────────────────────────────
+  function updateReadout() {
+    const displayedCommand = mode === "manual" ? manualTarget : paperCommand(time);
+    simTime.textContent = `t = ${time.toFixed(1)} s`;
+    vcReadout.textContent = `vᶜ = (${displayedCommand[0].toFixed(2)}, ${displayedCommand[1].toFixed(2)})`;
+  }
+
+  function updateInterface() {
+    runButton.textContent = paused ? "▶ Start" : "⏸ Pause";
+    statusDot.classList.toggle("running", !paused);
+    modeStatus.textContent = mode === "manual" ? "Manual velocity command" : "Paper circular command";
+    canvasHint.textContent = mode === "manual"
+      ? "Tap or drag: direction sets vᶜ, distance sets speed; release to hold"
+      : "Paper mode: vᶜ(t) = −[cos(πt/10), sin(πt/10)]ᵀ";
+    canvasHint.classList.remove("hidden");
+
+    const manualMode = mode === "manual";
+    zeroButton.hidden = !manualMode;
+    manualSpeedParameter.hidden = !manualMode;
+    paperPresets.hidden = manualMode;
+    document.querySelectorAll(".mode-button").forEach((button) => {
+      button.classList.toggle("active", button.dataset.mode === mode);
+    });
+    updateReadout();
+  }
+
+  function syncParameterControls() {
+    document.getElementById("kvSlider").value = kv;
+    document.getElementById("kpSlider").value = kp;
+    document.getElementById("kfSlider").value = kf;
+    document.getElementById("epsSlider").value = epsilon;
+    document.getElementById("manualSpeedSlider").value = manualMaxSpeed;
+    document.getElementById("kvValue").textContent = kv.toFixed(1);
+    document.getElementById("kpValue").textContent = kp.toFixed(1);
+    document.getElementById("kfValue").textContent = kf.toFixed(0);
+    document.getElementById("epsValue").textContent = epsilon.toFixed(3);
+    document.getElementById("manualSpeedValue").textContent = manualMaxSpeed.toFixed(1);
+  }
+
+  document.querySelectorAll(".mode-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (mode === button.dataset.mode) return;
+      mode = button.dataset.mode;
+      paused = true;
+      resetSimulation();
+    });
+  });
+
+  runButton.addEventListener("click", () => {
+    paused = !paused;
+    updateInterface();
+  });
+
+  resetButton.addEventListener("click", resetSimulation);
+
+  zeroButton.addEventListener("click", () => {
+    manualTarget = [0, 0];
+    updateReadout();
+  });
+
+  const parameterBindings = [
+    ["kv", "kvSlider", (value) => { kv = value; }],
+    ["kp", "kpSlider", (value) => { kp = value; }],
+    ["kf", "kfSlider", (value) => { kf = value; }],
+    ["epsilon", "epsSlider", (value) => { epsilon = value; }],
+    ["manualSpeed", "manualSpeedSlider", (value) => {
+      const oldMaximum = manualMaxSpeed;
+      manualMaxSpeed = value;
+      const currentMagnitude = Math.hypot(manualTarget[0], manualTarget[1]);
+      if (currentMagnitude > 1e-9) {
+        const newMagnitude = Math.min(manualMaxSpeed, currentMagnitude * manualMaxSpeed / oldMaximum);
+        manualTarget[0] *= newMagnitude / currentMagnitude;
+        manualTarget[1] *= newMagnitude / currentMagnitude;
+      }
+    }]
+  ];
+
+  for (const [, elementId, setter] of parameterBindings) {
+    document.getElementById(elementId).addEventListener("input", (event) => {
+      setter(Number(event.target.value));
+      syncParameterControls();
+    });
+  }
+
+  document.querySelectorAll(".preset-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      epsilon = 0.01;
+      kv = 0.5;
+      kf = 30;
+      kp = button.dataset.preset === "set1" ? 1.0 : 0.1;
+      document.querySelectorAll(".preset-button").forEach((item) => {
+        item.classList.toggle("active", item === button);
+      });
+      syncParameterControls();
+      resetSimulation();
+    });
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === " ") {
+      event.preventDefault();
+      paused = !paused;
+      updateInterface();
+    } else if (event.key.toLowerCase() === "r" && !event.ctrlKey && !event.metaKey) {
+      resetSimulation();
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // Main loop
+  // ─────────────────────────────────────────────────────────
+  let previousFrame = performance.now();
+  let accumulator = 0;
+
+  function animationLoop(now) {
+    const elapsed = Math.min(0.08, (now - previousFrame) / 1000);
+    previousFrame = now;
+
+    if (!paused) {
+      accumulator += elapsed * SIMULATION_RATE;
+      while (accumulator >= DT) {
+        simulationStep();
+        accumulator -= DT;
+      }
+    } else {
+      accumulator = 0;
+    }
+
+    render();
+    requestAnimationFrame(animationLoop);
+  }
+
+  resizeCanvas();
+  syncParameterControls();
+  resetSimulation();
+  requestAnimationFrame(animationLoop);
+})();
+</script>
+</body>
+</html>
